@@ -14,7 +14,6 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
 
 import javax.jms.*;
-import java.io.IOException;
 
 @SpringBootApplication
 public class SleuthApplication {
