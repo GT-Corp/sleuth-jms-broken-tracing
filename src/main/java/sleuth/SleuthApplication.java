@@ -1,5 +1,7 @@
 package sleuth;
 
+import brave.Span;
+import brave.Tracing;
 import org.slf4j.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringApplication;
@@ -48,11 +50,16 @@ public class SleuthApplication {
 
             restTemplate.getForEntity("http://localhost:8080/test", Void.class); //-->it works
 
-            throw new MyException("Some Error");  //-->it doesn't
+            throw new MyException("Some Error");  //-->it also works now !!!
         }
 
         static class MyException extends RuntimeException {
-            public MyException(String msg) { super(msg); }
+            final Span span;
+
+            public MyException(String msg) {
+                super(msg);
+                this.span = Tracing.currentTracer().currentSpan();
+            }
         }
 
     }
@@ -64,8 +71,19 @@ public class SleuthApplication {
 
         @Override
         public void handleError(Throwable t) {
-            log.info("handling error by calling another endpoint .."); //1....tracing is lost here
-            restTemplate.getForEntity("http://localhost:8080/test", Void.class);
+            if(t.getCause() instanceof Ctrl.MyException){
+
+                Ctrl.MyException mex = (Ctrl.MyException) t.getCause();
+
+                Tracing.currentTracer().withSpanInScope(mex.span);
+
+                log.info("handling error by calling another endpoint ..");
+
+                restTemplate.getForEntity("http://localhost:8080/test", Void.class); //trace id will get propagated
+
+                log.info("Finished handling error " );
+            }
+
         }
     }
 
