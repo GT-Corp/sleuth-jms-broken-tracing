@@ -7,3 +7,9 @@
 2020-08-04 17:55:24.332  INFO [,,,] 16956 --- [enerContainer-1] sleuth.SleuthApplication                 : handling error by calling another endpoint ..     <<<<<<<<< new thread started and lost tracing
 2020-08-04 17:55:24.336  INFO [,4c163d0997076729,4c163d0997076729,true] 16956 --- [nio-8080-exec-2] sleuth.SleuthApplication                 : test1 called  <<<<<<<<< new trace id received
 ```
+
+## Solution (a workaround) found:
+
+See the diff on the PR:
+
+https://github.com/gtiwari333/sleuth-jms-broken-tracing/pull/2/files
