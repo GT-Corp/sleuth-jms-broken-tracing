@@ -1,5 +1,7 @@
 # sleuth-jms-broken-tracing
 
+GIT Project for issue : https://stackoverflow.com/questions/63257909/spring-sleuth-broken-tracing-on-jms-errorhandler
+
 ```
 2020-08-04 17:55:24.212  INFO [,225c47fb814f6584,225c47fb814f6584,true] 16956 --- [nio-8080-exec-1] sleuth.SleuthApplication                 : Queuing message ...
 2020-08-04 17:55:24.282  INFO [,225c47fb814f6584,eac851f1650ae8a6,true] 16956 --- [enerContainer-1] sleuth.SleuthApplication                 : JMS message received SOME MESSAGE !!!
