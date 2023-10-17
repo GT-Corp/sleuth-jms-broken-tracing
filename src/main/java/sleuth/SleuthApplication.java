@@ -6,6 +6,7 @@ import org.slf4j.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.context.annotation.*;
 import org.springframework.jms.annotation.*;
 import org.springframework.jms.config.*;
@@ -15,7 +16,7 @@ import org.springframework.util.ErrorHandler;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
 
-import javax.jms.*;
+import jakarta.jms.*;
 
 @SpringBootApplication
 public class SleuthApplication {
@@ -25,7 +26,7 @@ public class SleuthApplication {
     public static void main(String[] args) {  new SpringApplication(SleuthApplication.class).run(args); }
 
     @Bean
-    RestTemplate restTemplate() {  return new RestTemplate();  }
+    RestTemplate restTemplate(RestTemplateBuilder rb) {  return rb.build();  }
 
     @RestController
     static class Ctrl {
@@ -36,19 +37,39 @@ public class SleuthApplication {
         @GetMapping("/test")
         void test() {
             log.info("test1 called");
+            restTemplate.getForEntity("http://localhost:8081/test2", Void.class); //-->it works
+
+        }
+
+        @GetMapping("/test2")
+        void test2() {
+            log.info("test2 called");
+            restTemplate.getForEntity("http://localhost:8081/test3", Void.class); //-->it works
+        }
+
+        @GetMapping("/test3")
+        void test3() {
+            log.info("test3 called");
         }
 
         @GetMapping("/jms")
         void jms() {
             log.info("Queuing message ...");
-            jmsTemplate.convertAndSend("test-queue", "SOME MESSAGE !!!");
+            restTemplate.getForEntity("http://localhost:8081/test", Void.class); //-->it works
+
+            /*
+            //jms integration is not working yet
+            https://github.com/micrometer-metrics/micrometer/issues/4202
+            https://github.com/spring-projects/spring-framework/issues/30335
+             */
+//            jmsTemplate.convertAndSend("test-queue", "SOME MESSAGE !!!");
         }
 
         @JmsListener(destination = "test-queue", concurrency = "5")
         void onMessage(TextMessage message) throws JMSException {
             log.info("JMS message received {}", message.getText());
 
-            restTemplate.getForEntity("http://localhost:8080/test", Void.class); //-->it works
+            restTemplate.getForEntity("http://localhost:8081/test", Void.class); //-->it works
 
             throw new MyException("Some Error");  //-->it also works now !!!
         }
@@ -79,7 +100,7 @@ public class SleuthApplication {
 
                 log.info("handling error by calling another endpoint ..");
 
-                restTemplate.getForEntity("http://localhost:8080/test", Void.class); //trace id will get propagated
+                restTemplate.getForEntity("http://localhost:8081/test", Void.class); //trace id will get propagated
 
                 log.info("Finished handling error " );
             }
