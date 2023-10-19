@@ -26,12 +26,18 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-artemis'
 
+    implementation 'org.springframework.boot:spring-boot-starter-cache'
+    implementation 'org.aspectj:aspectjweaver'
+
     implementation group: 'org.apache.activemq', name: 'artemis-jms-server', version: '2.31.0'
 
 
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'io.micrometer:micrometer-tracing-bridge-brave'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
 }
 
 dependencyManagement {

@@ -13,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.web.client.RestTemplateBuilder;
+import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.task.TaskDecorator;
@@ -26,7 +27,6 @@ import org.springframework.jms.config.JmsListenerEndpointRegistrar;
 import org.springframework.jms.core.JmsTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.EnableScheduling;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.ErrorHandler;
@@ -36,6 +36,7 @@ import org.springframework.web.client.RestTemplate;
 
 @SpringBootApplication
 @EnableScheduling
+@EnableCaching
 public class SleuthApplication {
 
     static Logger log = LoggerFactory.getLogger(SleuthApplication.class);
@@ -75,7 +76,7 @@ public class SleuthApplication {
         ThreadPoolTaskExecutor scheduler;
 
 
-        @Scheduled(fixedDelay = 40000L)
+        //        @Scheduled(fixedDelay = 40000L)
         void callTest3() {
             log.info("schedule called");
             restTemplate.getForEntity("http://localhost:8081/test3", Void.class);
