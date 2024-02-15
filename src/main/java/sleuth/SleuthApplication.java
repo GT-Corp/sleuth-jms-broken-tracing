@@ -4,6 +4,7 @@ import brave.Span;
 import brave.Tracer;
 import brave.Tracing;
 import brave.propagation.ThreadLocalSpan;
+import io.micrometer.observation.ObservationRegistry;
 import jakarta.jms.ConnectionFactory;
 import jakarta.jms.JMSException;
 import jakarta.jms.TextMessage;
@@ -12,9 +13,15 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.task.ThreadPoolTaskExecutorBuilder;
 import org.springframework.boot.web.client.RestTemplateBuilder;
+import org.springframework.cloud.openfeign.EnableFeignClients;
+import org.springframework.cloud.openfeign.FeignClientsConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Primary;
+import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.core.task.TaskDecorator;
 import org.springframework.core.task.support.ContextPropagatingTaskDecorator;
 import org.springframework.jms.annotation.EnableJms;
@@ -25,17 +32,21 @@ import org.springframework.jms.config.JmsListenerContainerFactory;
 import org.springframework.jms.config.JmsListenerEndpointRegistrar;
 import org.springframework.jms.core.JmsTemplate;
 import org.springframework.scheduling.annotation.Async;
+import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
-import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.ErrorHandler;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.client.RestTemplate;
+import sleuth.feign.FeignTestClient;
 
 @SpringBootApplication
 @EnableScheduling
+@EnableAsync
+@EnableJms
 public class SleuthApplication {
 
     static Logger log = LoggerFactory.getLogger(SleuthApplication.class);
@@ -44,21 +55,40 @@ public class SleuthApplication {
         new SpringApplication(SleuthApplication.class).run(args);
     }
 
-    @Bean
-    RestTemplate restTemplate(RestTemplateBuilder rb) {
-        return rb.build();
+
+    @Configuration
+    @EnableFeignClients(basePackages = "sleuth")
+    @Import(FeignClientsConfiguration.class)
+    static class FeignConfiguration {
+
+        @Bean
+        feign.Logger.Level feignLoggerLevel() {
+            return feign.Logger.Level.FULL;
+        }
     }
 
     @Configuration
-    class AsyncConfig {
+    static class Config {
+
+        @Bean
+        RestTemplate restTemplate(RestTemplateBuilder rb) {
+            return rb.build();
+        }
 
         @Bean
         public TaskDecorator decorator() {
             return new ContextPropagatingTaskDecorator();
         }
 
+        @Bean
+        @Primary
+        AsyncTaskExecutor executor(ThreadPoolTaskExecutorBuilder builder, TaskDecorator taskDecorator) {
+            return builder.threadNamePrefix("GTX").taskDecorator(taskDecorator).build();
+        }
+
 
     }
+
 
     @RestController
     static class Ctrl {
@@ -71,50 +101,60 @@ public class SleuthApplication {
         Tracer tracer; //checking auto wiring
 
         @Autowired
-//        @Qualifier(value = "asyncExecutorPool2")
-        ThreadPoolTaskExecutor scheduler;
+        AsyncTaskExecutor executor;
+
+        @Autowired
+        AService aService;
+
+        @Autowired
+        FeignTestClient testApiClient;
+
+        @Autowired
+        ObservationRegistry observationRegistry;
 
 
-        @Scheduled(fixedDelay = 40000L)
-        void callTest3() {
-            log.info("schedule called");
-            restTemplate.getForEntity("http://localhost:8081/test3", Void.class);
+        @Scheduled(fixedDelay = 10000L)
+        void test0() {
+            log.info("test0 - schedule called ");
+            restTemplate.getForEntity("http://localhost:8081/test1/test0", Void.class);
 
-            scheduler.submit(() -> {
-                log.info("Running task using scheduler ");
+            executor.submit(() -> {
+                log.info("test0 - Running task using scheduler "); //working
+                restTemplate.getForEntity("http://localhost:8081/test1/test0.executor1", Void.class);
                 restTemplate.getForEntity("http://localhost:8081/jms", Void.class);
+                aService.someAsyncMethod("test0.executor2");
             });
-        }
 
-        @GetMapping("/test")
-        void test() {
-            log.info("test1 called");
-            restTemplate.getForEntity("http://localhost:8081/test2", Void.class); //-->it works
+            aService.someAsyncMethod("test0");
+
+            testApiClient.test1("test 0 using feign client");
 
         }
 
-        @GetMapping("/test2")
-        void test2() {
-            log.info("test2 called");
-            restTemplate.getForEntity("http://localhost:8081/test3", Void.class); //-->it works
+        @GetMapping("/test1/{from}")
+        void test1(@PathVariable String from) throws CustomException {
+            log.info("test1 called from " + from);
+            restTemplate.getForEntity("http://localhost:8081/test2/test1", Void.class); //-->it works
+            aService.someAsyncMethod("test1");
+
+            if (from.contains("feign")) {
+                throw new CustomException("Something");
+            }
         }
 
-        @Async
-        @GetMapping("/test3")
-        void test3() {
-            log.info("test3 async called");
+
+        @GetMapping("/test2/{from}")
+        void test2(@PathVariable String from) {
+            log.info("test2 called from " + from);
         }
+
 
         @GetMapping("/jms")
         void jms() {
-            log.info("Queuing message ...");
-            restTemplate.getForEntity("http://localhost:8081/test2", Void.class); //-->it works
+            log.info("jms - Queuing message ...");
+            restTemplate.getForEntity("http://localhost:8081/test2/jms", Void.class); //-->it works
 
-            /*
-            //jms integration is not working yet
-            https://github.com/micrometer-metrics/micrometer/issues/4202
-            https://github.com/spring-projects/spring-framework/issues/30335
-             */
+            jmsTemplate.setObservationRegistry(observationRegistry);
             jmsTemplate.convertAndSend("test-queue", "SOME MESSAGE !!!");
         }
 
@@ -122,7 +162,7 @@ public class SleuthApplication {
         void onMessage(TextMessage message) throws JMSException {
             log.info("JMS message received {}", message.getText());
 
-            restTemplate.getForEntity("http://localhost:8081/test", Void.class); //-->it works
+            restTemplate.getForEntity("http://localhost:8081/test/jms-onMessage", Void.class); //-->it works
 
             throw new MyException("Some Error");  //-->it also works now !!!
         }
@@ -137,6 +177,14 @@ public class SleuthApplication {
             }
         }
 
+    }
+
+    @Component
+    static class AService {
+        @Async
+        void someAsyncMethod(String from) {
+            log.info("async called from " + from);
+        }
     }
 
     @Component
@@ -156,7 +204,7 @@ public class SleuthApplication {
 
                     log.info("handling error by calling another endpoint ..");
 
-                    restTemplate.getForEntity("http://localhost:8081/test", Void.class); //trace id will get propagated
+                    restTemplate.getForEntity("http://localhost:8081/test1/jms-handle-error", Void.class); //trace id will get propagated
 
                     log.info("Finished handling error ");
                 } finally {

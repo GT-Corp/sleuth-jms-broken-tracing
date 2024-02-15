@@ -1,7 +1,7 @@
 plugins {
     id 'java'
-    id 'org.springframework.boot' version '3.2.0-M3'
-    id 'io.spring.dependency-management' version '1.1.3'
+    id 'org.springframework.boot' version '3.2.2'
+    id 'io.spring.dependency-management' version '1.1.4'
 }
 
 
@@ -18,7 +18,7 @@ repositories {
 }
 
 ext {
-    set('springCloudVersion', "2023.0.0-M2")
+    set('springCloudVersion', "2023.0.0")
 
 }
 
@@ -26,11 +26,16 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-artemis'
 
-    implementation group: 'org.apache.activemq', name: 'artemis-jms-server', version: '2.31.0'
+    implementation group: 'org.apache.activemq', name: 'artemis-jakarta-server'
 
+    implementation 'org.springframework.cloud:spring-cloud-starter-openfeign'
+    implementation 'io.github.openfeign:feign-micrometer'
 
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'io.micrometer:micrometer-tracing-bridge-brave'
+    implementation 'io.zipkin.brave:brave-instrumentation-spring-web'
+    implementation 'io.micrometer:micrometer-jakarta9'
+
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
 }
 
