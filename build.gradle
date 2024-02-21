@@ -13,8 +13,6 @@ java {
 
 repositories {
     mavenCentral()
-    maven { url 'https://repo.spring.io/milestone' }
-
 }
 
 ext {
@@ -34,7 +32,6 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'io.micrometer:micrometer-tracing-bridge-brave'
     implementation 'io.zipkin.brave:brave-instrumentation-spring-web'
-    implementation 'io.micrometer:micrometer-jakarta9'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
 }
