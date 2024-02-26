@@ -32,6 +32,7 @@ import org.springframework.jms.core.JmsTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.annotation.EnableScheduling;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.util.ErrorHandler;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -81,7 +82,7 @@ public class SleuthApplication {
         @Bean
         @Primary
         AsyncTaskExecutor executor(ThreadPoolTaskExecutorBuilder builder, TaskDecorator taskDecorator) {
-            return builder.threadNamePrefix("GTX").taskDecorator(taskDecorator).build();
+            return builder.threadNamePrefix("GTX-").taskDecorator(taskDecorator).build();
         }
 
 
@@ -111,13 +112,14 @@ public class SleuthApplication {
         ObservationRegistry observationRegistry;
 
 
-        //        @Scheduled(fixedDelay = 10000L)
+        @Scheduled(fixedDelay = 10000L)
+        @GetMapping("/test0")
         void test0() {
-            log.info("test0 - schedule called ");
+            log.info("test0 - schedule called . Thread {}", Thread.currentThread().getName());
             restTemplate.getForEntity("http://localhost:8081/test1/test0", Void.class);
 
-            executor.submit(() -> {
-                log.info("test0 - Running task using scheduler "); //working
+            executor.execute(() -> {
+                log.info("test0 - Running task using scheduler. Thread: {}", Thread.currentThread().getName()); //working
                 restTemplate.getForEntity("http://localhost:8081/test1/test0.executor1", Void.class);
                 restTemplate.getForEntity("http://localhost:8081/jms", Void.class);
                 aService.someAsyncMethod("test0.executor2");
@@ -154,11 +156,16 @@ public class SleuthApplication {
 
         @GetMapping("/jms")
         void jms() {
+            jmsTemplate.setObservationRegistry(observationRegistry);
+
             log.info("jms - Queuing message ...");
+            aService.someAsyncMethod("jms-start");
+
             restTemplate.getForEntity("http://localhost:8081/test2/jms", Void.class); //-->it works
 
-            jmsTemplate.setObservationRegistry(observationRegistry);
             jmsTemplate.convertAndSend("test-queue1", "SOME MESSAGE to queue 1 !!!");
+            aService.someAsyncMethod("jms-end");
+
         }
 
         @JmsListener(destination = "test-queue1", concurrency = "5")
@@ -197,7 +204,8 @@ public class SleuthApplication {
     static class AService {
         @Async
         void someAsyncMethod(String from) {
-            log.info("async called from " + from);
+
+            log.info("async called from {} Thread: {}", from, Thread.currentThread().getName());
         }
     }
 
