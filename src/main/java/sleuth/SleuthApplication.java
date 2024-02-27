@@ -1,9 +1,6 @@
 package sleuth;
 
-import brave.Span;
 import brave.Tracer;
-import brave.Tracing;
-import brave.propagation.ThreadLocalSpan;
 import io.micrometer.observation.ObservationRegistry;
 import jakarta.jms.ConnectionFactory;
 import jakarta.jms.JMSException;
@@ -22,7 +19,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
-import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.core.task.TaskDecorator;
 import org.springframework.core.task.support.ContextPropagatingTaskDecorator;
 import org.springframework.jms.annotation.EnableJms;
@@ -33,12 +29,14 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.ErrorHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestTemplate;
 import sleuth.feign.FeignTestClient;
 
@@ -67,6 +65,16 @@ public class SleuthApplication {
     }
 
     @Configuration
+    static class RestClientConfig {
+        @Bean
+        RestClient test1Client(RestClient.Builder builder) {
+            return builder
+                    .baseUrl("http://localhost:8081")
+                    .build();
+        }
+    }
+
+    @Configuration
     static class ConfigXXX {
 
         @Bean
@@ -81,8 +89,10 @@ public class SleuthApplication {
 
         @Bean
         @Primary
-        AsyncTaskExecutor executor(ThreadPoolTaskExecutorBuilder builder, TaskDecorator taskDecorator) {
-            return builder.threadNamePrefix("GTX-").taskDecorator(taskDecorator).build();
+        ThreadPoolTaskExecutor executor(ThreadPoolTaskExecutorBuilder builder, TaskDecorator taskDecorator) {
+            return builder.threadNamePrefix("GTX-")
+                    .taskDecorator(taskDecorator)
+                    .build();
         }
 
 
@@ -100,7 +110,7 @@ public class SleuthApplication {
         Tracer tracer; //checking auto wiring
 
         @Autowired
-        AsyncTaskExecutor executor;
+        ThreadPoolTaskExecutor threadPoolTaskExecutor;
 
         @Autowired
         AService aService;
@@ -111,14 +121,17 @@ public class SleuthApplication {
         @Autowired
         ObservationRegistry observationRegistry;
 
+        @Autowired
+        RestClient restClient;
 
-        @Scheduled(fixedDelay = 10000L)
+
+        @Scheduled(fixedDelay = 15000L)
         @GetMapping("/test0")
         void test0() {
             log.info("test0 - schedule called . Thread {}", Thread.currentThread().getName());
             restTemplate.getForEntity("http://localhost:8081/test1/test0", Void.class);
 
-            executor.execute(() -> {
+            threadPoolTaskExecutor.execute(() -> {
                 log.info("test0 - Running task using scheduler. Thread: {}", Thread.currentThread().getName()); //working
                 restTemplate.getForEntity("http://localhost:8081/test1/test0.executor1", Void.class);
                 restTemplate.getForEntity("http://localhost:8081/jms", Void.class);
@@ -127,7 +140,7 @@ public class SleuthApplication {
 
             aService.someAsyncMethod("test0");
 
-//            testApiClient.test1("test 0 using feign client");
+            testApiClient.test1("test 0 using feign client");
 
         }
 
@@ -156,12 +169,12 @@ public class SleuthApplication {
 
         @GetMapping("/jms")
         void jms() {
-            jmsTemplate.setObservationRegistry(observationRegistry);
 
             log.info("jms - Queuing message ...");
             aService.someAsyncMethod("jms-start");
+            restClient.get().uri("/test2/JMS-RestClient").retrieve().body(Void.class);
 
-            restTemplate.getForEntity("http://localhost:8081/test2/jms", Void.class); //-->it works
+            restTemplate.getForEntity("http://localhost:8081/test2/JMS-restTemplate", Void.class); //-->it works
 
             jmsTemplate.convertAndSend("test-queue1", "SOME MESSAGE to queue 1 !!!");
             aService.someAsyncMethod("jms-end");
@@ -189,12 +202,8 @@ public class SleuthApplication {
 
 
         static class MyException extends RuntimeException {
-            final Span span;
-
-
             public MyException(String msg) {
                 super(msg);
-                this.span = ThreadLocalSpan.CURRENT_TRACER.next();
             }
         }
 
@@ -218,21 +227,13 @@ public class SleuthApplication {
         @Override
         public void handleError(Throwable t) {
             log.error("Got some error {}", t.getMessage());
-            if (t.getCause() instanceof Ctrl.MyException || t.getCause() instanceof HttpClientErrorException) {
-
-                Ctrl.MyException mex = (Ctrl.MyException) t.getCause();
-                Tracer.SpanInScope scope = null;
-                try {
-                    scope = Tracing.currentTracer().withSpanInScope(mex.span);
-
-                    log.info("handling error by calling another endpoint ..");
-
-                    restTemplate.getForEntity("http://localhost:8081/test1/jms-handle-error", Void.class); //trace id will get propagated
-
-                    log.info("Finished handling error ");
-                } finally {
-                    if (scope != null) scope.close();
-                }
+            if (t.getCause() instanceof Ctrl.MyException) {
+                restTemplate.getForEntity("http://localhost:8081/test1/jms-handle-error", Void.class); //trace id will get propagated
+                log.info("Finished handling error ");
+            } else if (t.getCause() instanceof HttpClientErrorException) {
+                log.info("HTTP CLIENT Error {}", t.getMessage());
+            } else {
+                log.info("Error {}", t.getMessage());
             }
 
         }
